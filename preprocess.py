@@ -41,6 +41,3 @@ fig = plt.figure()
 ax = fig.add_subplot(111, projection="3d")
 ax.scatter(*pmtxyz.T)
 plt.savefig("pmt_sensors.png")
-
-
-

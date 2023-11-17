@@ -14,23 +14,22 @@ from torch_geometric.utils import to_dense_adj
 from models import PMTGCN, PMTGCN_VN
 from tools import prepare_data_regression, train_graphs
 import wandb
+import random
+# wandb.init(project='PMT') # Initialize a new run
 
-# Initialize a new run
-wandb.init(project='PMT')
 
 args = {
     "epochs": 800,
     "batch_size": 32,
-    "dropout": 0.2,
-    "lr": 0.01,
-    "num_hops": 2,
+    "dropout": 0.1,
+    "lr": 0.005,
+    "num_hops": 5,
     "graph": True,
 }
 
-# pmtxyz = get_pmtxyz('pmt_xyz.dat')
-# pmtsize = 2126
-
-datasetlst = torch.load("datasetlst_v2.pt")
+device = torch.device('cpu')
+datasetlst = torch.load('datasetlst_v2.pt', map_location=device)
+# datasetlst = torch.load("tiny_dataset.pt")
 train, val, test = prepare_data_regression(datasetlst)
 
 ## batch train, val
@@ -40,7 +39,7 @@ val_loader = DataLoader(val, batch_size=batch_size)
 
 ## Build Model
 input_dim = datasetlst[0].num_features ## 3 augmented
-hidden_dim = 128 # 4 * input_dim
+hidden_dim = 64 # 4 * input_dim
 output_dim = datasetlst[0].y.size(0)
 model = PMTGCN_VN(input_dim, hidden_dim, output_dim, dropout=args["dropout"], num_hops = args["num_hops"])
 m = model
@@ -50,5 +49,3 @@ print(sum(learnable))
 
 optim = torch.optim.Adam(m.parameters(), lr=args["lr"], weight_decay = 5e-4)
 train_losses, val_losses = train_graphs(m, optim, train_loader, val_loader, args)
-
-wandb.finish()

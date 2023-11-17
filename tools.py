@@ -8,6 +8,9 @@ from torch_geometric import utils
 from torch_geometric.loader import DataLoader
 from accelerate import Accelerator
 from torch_geometric.utils import to_dense_adj
+from accelerate import Accelerator
+import accelerate
+import wandb
 # import networkx as nx
 # import pickle
     
@@ -64,7 +67,17 @@ def prepare_data_regression(dataset, og_dataset=None, train_size=0.7, val_size=0
     print(f"Num of feature dimensions: {dataset[0].num_features}")
     return train, val, test
 
-def train_graphs(m, optimizer, train_loader, val_loader, dev, args):
+def set_seed(seed=999):
+    random.set_seed(seed)
+    np.random.set_seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+def train_graphs(m, optimizer, train_loader, val_loader, args):
+    ddp_kwargs = accelerate.DistributedDataParallelKwargs(find_unused_parameters=False) # , broadcast_buffers=False)
+    accelerator = Accelerator(kwargs_handlers=[ddp_kwargs], log_with="wandb")
+    accelerator.init_trackers(project_name="PMT")
+    m, optimizer, train_loader, val_loader = accelerator.prepare(m, optimizer, train_loader, val_loader)
     train_losses, val_losses, train_accs, val_accs = [], [], [], []
     for epoch in range(args["epochs"]):
         train_loss = 0
@@ -72,12 +85,13 @@ def train_graphs(m, optimizer, train_loader, val_loader, dev, args):
         total = 0
         m.train()
         for data in train_loader:
-            data = data.to(dev)
+            data = data
             optimizer.zero_grad(set_to_none=True)
             out = m(data)
 #             loss = F.cross_entropy(out, data.y)
             loss = F.mse_loss(out, data.y.view(out.size(0), 2))
-            loss.backward()
+#             loss.backward()
+            accelerator.backward(loss)
             optimizer.step()
             train_loss += loss.item() 
 
@@ -94,7 +108,7 @@ def train_graphs(m, optimizer, train_loader, val_loader, dev, args):
                 total = 0
                 val_loss = 0
                 for data in val_loader:
-                    data = data.to(dev)
+                    data = data
                     out = m(data)
                     loss = F.mse_loss(out, data.y.view(out.size(0), 2))
 
@@ -111,7 +125,13 @@ def train_graphs(m, optimizer, train_loader, val_loader, dev, args):
             val_losses += [val_loss]
 #             train_accs += [train_acc]
 #             val_accs += [val_acc]
-            print(f"Epoch {epoch}:\t train_loss: {train_loss:.4f}\t val_loss: {val_loss:.4f}")
+            accelerator.print(f"Epoch {epoch}:\t train_loss: {train_loss:.4f}\t val_loss: {val_loss:.4f}")
+            accelerator.log({
+                "batch": epoch,
+                "train_loss": train_loss,
+                "val_loss": val_loss,
+            })
+    wandb.finish()
     return train_losses, val_losses
 
 
