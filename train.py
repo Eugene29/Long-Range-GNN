@@ -13,20 +13,19 @@ from torch_geometric.utils import to_dense_adj
 ## .py imports ##
 from models import PMTGCN, PMTGCN_VN
 from tools import prepare_data_regression, train_graphs
+import wandb
 
-dev = "cuda" if torch.cuda.is_available() else "cpu"
-dev
+# Initialize a new run
+wandb.init(project='PMT')
 
 args = {
-    "dev": dev,
     "epochs": 800,
     "batch_size": 32,
     "dropout": 0.2,
     "lr": 0.01,
-    "num_hops": 3,
+    "num_hops": 2,
     "graph": True,
 }
-dev
 
 # pmtxyz = get_pmtxyz('pmt_xyz.dat')
 # pmtsize = 2126
@@ -44,12 +43,12 @@ input_dim = datasetlst[0].num_features ## 3 augmented
 hidden_dim = 128 # 4 * input_dim
 output_dim = datasetlst[0].y.size(0)
 model = PMTGCN_VN(input_dim, hidden_dim, output_dim, dropout=args["dropout"], num_hops = args["num_hops"])
-m = model.to(dev)
+m = model
 m.parameters()
 learnable = [p.numel() for p in m.parameters() if p.requires_grad]
 print(sum(learnable))
 
 optim = torch.optim.Adam(m.parameters(), lr=args["lr"], weight_decay = 5e-4)
-train_losses, val_losses = train_graphs(m, optim, train_loader, val_loader, dev, args)
+train_losses, val_losses = train_graphs(m, optim, train_loader, val_loader, args)
 
-
+wandb.finish()
