@@ -14,21 +14,28 @@ from torch_geometric.utils import to_dense_adj
 from models import PMTGCN, PMTGCN_VN
 from tools import prepare_data_regression, train_graphs
 import wandb
+import accelerate
+from accelerate import Accelerator
 import random
-# wandb.init(project='PMT') # Initialize a new run
-
 
 args = {
     "epochs": 800,
     "batch_size": 32,
-    "dropout": 0.1,
-    "lr": 0.005,
-    "num_hops": 5,
+    "dropout": 0.3,
+    "lr": 0.0003,
+    "num_hops": 15,
+    "vn": True,
     "graph": True,
 }
 
+torch.cuda.empty_cache()
+ddp_kwargs = accelerate.DistributedDataParallelKwargs(find_unused_parameters=False, broadcast_buffers=False)
+accelerator = Accelerator(kwargs_handlers=[ddp_kwargs], log_with="wandb")
+accelerator.init_trackers(project_name="PMT", config=args)
+
 device = torch.device('cpu')
-datasetlst = torch.load('datasetlst_v2.pt', map_location=device)
+# datasetlst = torch.load('datasetlst_v2.pt', map_location=torch.device('cpu'))
+datasetlst = torch.load('knn6_datasetlst_v2.pt', map_location=device)
 # datasetlst = torch.load("tiny_dataset.pt")
 train, val, test = prepare_data_regression(datasetlst)
 
@@ -41,11 +48,9 @@ val_loader = DataLoader(val, batch_size=batch_size)
 input_dim = datasetlst[0].num_features ## 3 augmented
 hidden_dim = 64 # 4 * input_dim
 output_dim = datasetlst[0].y.size(0)
-model = PMTGCN_VN(input_dim, hidden_dim, output_dim, dropout=args["dropout"], num_hops = args["num_hops"])
-m = model
-m.parameters()
+m = PMTGCN_VN(input_dim, hidden_dim, output_dim, dropout=args["dropout"], num_hops = args["num_hops"], virtual=args["vn"])
 learnable = [p.numel() for p in m.parameters() if p.requires_grad]
-print(sum(learnable))
+accelerator.print(sum(learnable))
 
 optim = torch.optim.Adam(m.parameters(), lr=args["lr"], weight_decay = 5e-4)
-train_losses, val_losses = train_graphs(m, optim, train_loader, val_loader, args)
+train_losses, val_losses = train_graphs(m, optim, train_loader, val_loader, args, accelerator)

@@ -11,6 +11,7 @@ from torch_geometric.utils import to_dense_adj
 from accelerate import Accelerator
 import accelerate
 import wandb
+import time
 # import networkx as nx
 # import pickle
     
@@ -73,12 +74,10 @@ def set_seed(seed=999):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
-def train_graphs(m, optimizer, train_loader, val_loader, args):
-    ddp_kwargs = accelerate.DistributedDataParallelKwargs(find_unused_parameters=False) # , broadcast_buffers=False)
-    accelerator = Accelerator(kwargs_handlers=[ddp_kwargs], log_with="wandb")
-    accelerator.init_trackers(project_name="PMT")
+def train_graphs(m, optimizer, train_loader, val_loader, args, accelerator):
     m, optimizer, train_loader, val_loader = accelerator.prepare(m, optimizer, train_loader, val_loader)
     train_losses, val_losses, train_accs, val_accs = [], [], [], []
+    start = time.time()
     for epoch in range(args["epochs"]):
         train_loss = 0
         correct = 0
@@ -127,11 +126,12 @@ def train_graphs(m, optimizer, train_loader, val_loader, args):
 #             val_accs += [val_acc]
             accelerator.print(f"Epoch {epoch}:\t train_loss: {train_loss:.4f}\t val_loss: {val_loss:.4f}")
             accelerator.log({
-                "batch": epoch,
                 "train_loss": train_loss,
                 "val_loss": val_loss,
             })
-    wandb.finish()
+    end = time.time()
+    accelerator.print(end-start)
+    accelerator.log({"total_train_time": end-start})
+    accelerator.end_training()
     return train_losses, val_losses
-
 

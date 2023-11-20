@@ -40,7 +40,7 @@ class PMTGCN(nn.Module):
             x = self.convs[i](x, edge_index) + x
             x = self.bns[i](x)
 #             x = self.lns[i](x)
-            x = F.dropout(x, p=self.dropout) ## pre-ffnn dropout
+#             x = F.dropout(x, p=self.dropout) ## pre-ffnn dropout
             x = self.ffnns[i](x) + x
             x = F.dropout(x, p=self.dropout) ## post-ffnn dropout
             
@@ -49,9 +49,9 @@ class PMTGCN(nn.Module):
         return x
 
 class PMTGCN_VN(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, dropout=0.2, num_hops=2):
+    def __init__(self, input_dim, hidden_dim, output_dim, dropout=0.2, num_hops=2, virtual=False):
         super().__init__()
-        self.num_hops = num_hops
+        self.num_hops, self.virtual = num_hops, virtual
 
         def create_ffnn(input_dim=hidden_dim, hidden_dim=hidden_dim, output_dim=hidden_dim):
             ffnn = nn.Sequential(
@@ -62,11 +62,14 @@ class PMTGCN_VN(nn.Module):
             )
             return ffnn
 
+        if virtual:
+            self.vn = torch.nn.Parameter(torch.randn(1, 4 * hidden_dim)) ## VN embedding
+            self.update_vn = nn.ModuleList([Linear(hidden_dim, 4*hidden_dim) for _ in range(num_hops)])
+            self.propogate_vn = nn.ModuleList([Linear(4*hidden_dim, hidden_dim) for _ in range(num_hops)])
         self.preprocess = create_ffnn(input_dim=input_dim)
         self.ffnns = nn.ModuleList([create_ffnn() for _ in range(num_hops)]) # 1 for pre_process
-#         self.vn = torch.nn.Parameter(torch.randn(1, 2 * hidden_dim))
-        self.convs = nn.ModuleList([GCNConv(hidden_dim, hidden_dim) for _ in range(num_hops)])
-#         self.convs = nn.ModuleList([GATv2Conv(hidden_dim, hidden_dim//8, heads=8) for _ in range(num_hops)])
+#         self.convs = nn.ModuleList([GCNConv(hidden_dim, hidden_dim) for _ in range(num_hops)])
+        self.convs = nn.ModuleList([GATv2Conv(hidden_dim, hidden_dim//8, heads=8) for _ in range(num_hops)])
         self.postprocess = create_ffnn(output_dim=output_dim)
         self.bns = nn.ModuleList(nn.BatchNorm1d(hidden_dim) for _ in range(num_hops))
 #         self.lns = nn.ModuleList(nn.LayerNorm(hidden_dim) for _ in range(num_hops))
@@ -78,14 +81,20 @@ class PMTGCN_VN(nn.Module):
         
         x = self.preprocess(x)
         for i in range(self.num_hops):
-            x = self.convs[i](x, edge_index) + x
-            ## Try two different messages method? (one before vn aggregating) ##
-#             x = self.vn[i](global_mean_pool(x, batch)) + x
-#             if i == self.num_hops // 2:
+            if self.virtual:
+                ## adds the mean and ffnn to send out
+                vn = self.vn + self.update_vn[i](global_mean_pool(x, batch))
+                outvn = self.propogate_vn[i](vn) # [B, H]
+            conv = self.convs[i](x, edge_index)
+            x = F.dropout(conv, p=self.dropout) + x
             x = self.bns[i](x)
 #             x = self.lns[i](x)
-            x = self.ffnns[i](x) + x
-            x = F.dropout(x, p=self.dropout) ## post-ffnn dropout
+            if self.virtual:
+                ## broadcasting each batches' virtual node
+                expanded_outvn = outvn[batch] # [N, H]
+                x = self.ffnns[i](expanded_outvn + x) + x
+            else:
+                x = self.ffnns[i](x) + x
 #         x = F.dropout(x, p=self.dropout)
             
         x = global_mean_pool(x, batch)

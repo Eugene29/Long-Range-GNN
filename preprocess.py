@@ -15,18 +15,20 @@ from read_point_cloud import get_pmtxyz, load_graph, load_tensor
 from tools import feature_augmentation
 import sys 
 
-## How do I remind myself what the args are? 
-print(f'args provided: {sys.argv}')
-dev = "cuda" if torch.cuda.is_available() else "cpu"
-dev
-
+dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 pmtxyz = get_pmtxyz('pmt_xyz.dat')
 pmtsize = 2126
 datasetlst = []
 
-versions = [2]
+print(f'args provided: {sys.argv}')
+if len(sys.argv) < 4:
+    raise ValueError("you need to pass args: \n graph:{graph, tensor}, k: (int: knn), versions: {1, 2, 3, 12, ..., 123})")
+
+k = int(sys.argv[2])
+versions = [int(x) for x in sys.argv[3]]
+# versions = [2]
 if sys.argv[1] == "graph":
-    datasetlst = load_graph(versions, pmtxyz, dev)
+    datasetlst = load_graph(versions, pmtxyz, dev=dev, k=k)
     print(len(datasetlst))
     print(f"edge_index: {datasetlst[0].edge_index.shape}")
     ## graph augmentation (extra features)
@@ -35,7 +37,8 @@ else:
     datasetlst = load_tensor(versions, pmtxyz, dev)
     print(datasetlst.shape)
 
-torch.save(datasetlst, "datasetlst_v2.pt")
+# torch.save(datasetlst, "datasetlst_v2.pt")
+torch.save(datasetlst, "knn6_datasetlst_v2.pt")
 
 fig = plt.figure()
 ax = fig.add_subplot(111, projection="3d")
