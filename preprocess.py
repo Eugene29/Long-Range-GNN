@@ -10,10 +10,10 @@ from torch_geometric import transforms
 from torch_geometric import utils
 from torch_geometric.loader import DataLoader
 ## .py imports ##
-from models import PMTGCN
 from read_point_cloud import get_pmtxyz, load_graph, load_tensor
 from tools import feature_augmentation
-import sys 
+import sys
+import time
 
 dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 pmtxyz = get_pmtxyz('pmt_xyz.dat')
@@ -32,13 +32,16 @@ if sys.argv[1] == "graph":
     print(len(datasetlst))
     print(f"edge_index: {datasetlst[0].edge_index.shape}")
     ## graph augmentation (extra features)
+    start = time.time()
     feature_augmentation(datasetlst, features=True, dev=dev)
+    end = time.time()
+    print(end - start)
 else:
     datasetlst = load_tensor(versions, pmtxyz, dev)
     print(datasetlst.shape)
 
 # torch.save(datasetlst, "datasetlst_v2.pt")
-torch.save(datasetlst, "knn6_datasetlst_v2.pt")
+torch.save(datasetlst, f"knn{k}_datasetlst_{str(versions)}.pt")
 
 fig = plt.figure()
 ax = fig.add_subplot(111, projection="3d")

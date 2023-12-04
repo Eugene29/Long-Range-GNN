@@ -76,8 +76,8 @@ def load_graph(versions, pmtxyz, k, dev):
         fname = f"PointNet{v}.pickle"
         with open(fname, 'rb') as f:
             print(f"opening file version {v}")
-#             while True:
-            for _ in range(100): # test
+            while True:
+#             for _ in range(100): # test
                 try: 
                     loaded_dictionary = pickle.load(f, encoding="latin1")
                     datasetlst += [turn_dictionary_to_geom_data(loaded_dictionary, pmtxyz, dev, k)]
